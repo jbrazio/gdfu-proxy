@@ -1,0 +1,9 @@
+# Heltec V3, 8 MB flash. App stays at 0x10000/0x330000 (same as the stock
+# default_8MB table) so existing images and tests/test_memory_bounds.py hold;
+# app1 and coredump are dropped and the whole remainder (0x4C0000 = 4.75 MiB)
+# is the data partition used for file storage (LittleFS, label "spiffs").
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x330000,
+spiffs,   data, spiffs,  0x340000, 0x4C0000,
