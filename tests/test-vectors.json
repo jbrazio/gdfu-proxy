@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "frames": [
+    {
+      "name": "data-round-trip",
+      "hex": "47444655010401000102030401020304050607080A0B0C0D101112130002AABB67F3218B",
+      "valid": true
+    },
+    {
+      "name": "data-crc-corrupt",
+      "hex": "47444655010401000102030401020304050607080A0B0C0D101112130002AABB67F3218A",
+      "valid": false,
+      "error": "CRC"
+    }
+  ]
+}
