@@ -42,6 +42,15 @@ const SPISettings SPI_SETTINGS(8000000u, MSBFIRST, SPI_MODE0);
 SX1262Config config{};
 SPIClass spi(FSPI);
 
+// Optional external RF switch RX enable (XIAO Wio-SX1262: GPIO38), HIGH only while receiving.
+#ifndef SX1262_PIN_RXEN
+#define SX1262_PIN_RXEN SX1262_PIN_NC
+#endif
+void setRxEnable(bool on) {
+    if (SX1262_PIN_RXEN != SX1262_PIN_NC)
+        digitalWrite(SX1262_PIN_RXEN, on ? HIGH : LOW);
+}
+
 int waitBusy(uint32_t timeout_us) {
     const uint32_t start = micros();
     while (digitalRead(config.pins.busy) != LOW) {
@@ -125,6 +134,7 @@ int writeBuffer(const uint8_t *buf, size_t length) {
 void sx1262_set_config(const SX1262Config &next_config) { config = next_config; }
 
 int sx1262_sleep() {
+    setRxEnable(false);
     if (waitBusy(10000) != SX1262_OK)
         return SX1262_ERR_BUSY;
     const uint8_t command[] = {OP_SET_SLEEP, 0x00};
@@ -136,6 +146,9 @@ int sx1262_init() {
     digitalWrite(config.pins.cs, HIGH);
     pinMode(config.pins.busy, INPUT);
     pinMode(config.pins.dio1, INPUT);
+    if (SX1262_PIN_RXEN != SX1262_PIN_NC)
+        pinMode(SX1262_PIN_RXEN, OUTPUT);
+    setRxEnable(false);
     if (config.pins.reset != SX1262_PIN_NC) {
         pinMode(config.pins.reset, OUTPUT);
         digitalWrite(config.pins.reset, LOW);
@@ -234,6 +247,7 @@ int sx1262_init() {
 int sx1262_send_start(const uint8_t *buf, size_t length) {
     if (length == 0 || length > 255)
         return SX1262_ERR_PARAM;
+    setRxEnable(false);
     if (setStandby() != SX1262_OK || setPacketParams(static_cast<uint8_t>(length)) != SX1262_OK ||
         clearIrq(IRQ_TX_DONE | IRQ_TIMEOUT) != SX1262_OK || writeBuffer(buf, length) != SX1262_OK)
         return SX1262_ERR_SPI;
@@ -270,6 +284,7 @@ int sx1262_start_receive() {
     if (setStandby() != SX1262_OK || setPacketParams(0xFF) != SX1262_OK ||
         clearIrq(IRQ_ALL) != SX1262_OK)
         return SX1262_ERR_SPI;
+    setRxEnable(true);
     const uint8_t command[] = {OP_SET_RX, 0xFF, 0xFF, 0xFF};
     return writeCommand(command, sizeof(command));
 }
