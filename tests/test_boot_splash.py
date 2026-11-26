@@ -24,12 +24,12 @@ const uint8_t *oledGlyph(char) { static uint8_t glyph[5] = {127,127,127,127,127}
 ''' + function + '''
 int main() {
  showBootSplash();
- assert(waited == 3000 && pushed == 1);
+ assert(waited == 5000 && pushed == 1);
  for (int x=0; x<128; ++x) assert(oledFrame[0][x] == 0 && oledFrame[7][x] == 0);
  assert(oledFrame[3][31] != 0 && oledFrame[3][30] == 0);
  oledReady = false;
  showBootSplash();
- assert(waited == 3000 && pushed == 1);
+ assert(waited == 5000 && pushed == 1);
 }
 ''')
             executable = Path(directory) / 'test'

@@ -447,7 +447,7 @@ void showBootSplash() {
         }
     }
     pushOled();
-    delay(3000);
+    delay(5000);
 }
 
 void initOled() {
