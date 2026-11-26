@@ -715,6 +715,13 @@ gdfu_file_err_t gdfu_zip_validate_reader(gdfu_file_reader_t reader, void *contex
         } else if (gdfu_name_equals(name, name_length, "firmware.bin")) {
             bit = 4u;
             entry = &entries[2];
+        } else if (gdfu_name_equals(name, name_length, "zephyr.dat")) {
+            /* ZephCore (MeshCore Zephyr port) names its Nordic DFU entries zephyr.*. */
+            bit = 8u;
+            entry = &entries[1];
+        } else if (gdfu_name_equals(name, name_length, "zephyr.bin")) {
+            bit = 16u;
+            entry = &entries[2];
         } else {
             return GDFU_FILE_PACKAGE;
         }
@@ -731,7 +738,8 @@ gdfu_file_err_t gdfu_zip_validate_reader(gdfu_file_reader_t reader, void *contex
         }
         cursor += record_size;
     }
-    if (cursor != directory_end || found != 7u || entries[1].size == 0u || entries[2].size == 0u ||
+    /* manifest + firmware.{dat,bin}, or manifest + zephyr.{dat,bin}; never mixed. */
+    if (cursor != directory_end || (found != 7u && found != 25u) ||entries[1].size == 0u || entries[2].size == 0u ||
         !gdfu_crc16_entry(reader, context, file_size, &entries[2], &crc16) ||
         !gdfu_validate_manifest(reader, context, &entries[0], crc16)) {
         return GDFU_FILE_PACKAGE;
