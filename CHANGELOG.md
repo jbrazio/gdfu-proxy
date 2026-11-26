@@ -19,6 +19,7 @@ All notable changes to this project are documented in this file. Format inspired
 
 ### Fixed
 
+- SX1262 gFSK RX bandwidth is now 187.2 kHz as documented. It was 117.3 kHz, narrower than the 80 kbps / 28 kHz signal.
 - Heltec V3 target signal strength now reports RSSI instead of a constant -1 dBm.
 - OLED `ERR` counter resets when a new upload starts (START_DFU) instead of accumulating across sessions.
 - BLE task and `loop()` queue handoff is now lock-protected (`portMUX_TYPE`); an unlocked push during `shift()` could duplicate one chunk and drop the next, surfacing as a CRC16 NACK at FINISH.

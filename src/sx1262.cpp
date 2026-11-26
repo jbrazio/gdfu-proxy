@@ -196,7 +196,7 @@ int sx1262_init() {
         static_cast<uint8_t>(bitrate >> 8),
         static_cast<uint8_t>(bitrate),
         0x09,
-        static_cast<uint8_t>(config.rx_bandwidth_hz == GDFU_RX_BANDWIDTH_868_HZ ? 0x0B : 0x0A),
+        0x12, // rxBw = 187.2 kHz DSB (Semtech SX126X_GFSK_BW_187200), both profiles
         static_cast<uint8_t>(deviation >> 16),
         static_cast<uint8_t>(deviation >> 8),
         static_cast<uint8_t>(deviation),
