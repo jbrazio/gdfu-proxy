@@ -184,6 +184,24 @@ static void test_accepts_exact_stored_package_with_bounded_comment(void)
   CHECK(validate(&zip) == GDFU_FILE_OK);
 }
 
+static void test_accepts_zephyr_named_package_but_not_mixed_names(void)
+{
+  struct zip_builder zip;
+  memset(&zip, 0, sizeof(zip));
+  add_entry(&zip, "manifest.json", (const uint8_t *)manifest_ok, strlen(manifest_ok), 0u);
+  add_entry(&zip, "zephyr.bin", (const uint8_t *)"firmware image", 14u, 0u);
+  add_entry(&zip, "zephyr.dat", (const uint8_t *)"init", 4u, 0u);
+  finish_zip(&zip, 0u);
+  CHECK(validate(&zip) == GDFU_FILE_OK);
+
+  memset(&zip, 0, sizeof(zip));
+  add_entry(&zip, "manifest.json", (const uint8_t *)manifest_ok, strlen(manifest_ok), 0u);
+  add_entry(&zip, "firmware.dat", (const uint8_t *)"init", 4u, 0u);
+  add_entry(&zip, "zephyr.bin", (const uint8_t *)"firmware image", 14u, 0u);
+  finish_zip(&zip, 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+}
+
 static void test_accepts_nrfutil_manifest_with_ignored_fields(void)
 {
   struct zip_builder zip;
@@ -681,6 +699,7 @@ int main(void)
   test_package_policy();
   test_nordic_crc16();
   test_accepts_exact_stored_package_with_bounded_comment();
+  test_accepts_zephyr_named_package_but_not_mixed_names();
   test_accepts_nrfutil_manifest_with_ignored_fields();
   test_rejects_bad_profile_and_manifest_fields();
   test_rejects_invalid_zip_structure_and_offsets();

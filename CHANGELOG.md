@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file. Format inspired
 
 ### Added
 
+- Proxy storage accepts ZephCore (MeshCore Zephyr port) packages, which name their files `zephyr.bin` and `zephyr.dat`.
 - Five-second boot splash with the proxy name, firmware version and `by kasvoton * meshcore.pt` credit.
 - TTGO LoRa32 V1.6 (SX1276) proxy target.
 - DFU status notifications carry an 11th byte: gFSK RSSI (dBm, signed) of the last ACK/NACK from the selected target, 0 until one arrives (real readings clamp to <= -1). Reset on target select, START_DFU and BLE disconnect. Apps that accept >= 10 bytes ignore it.
