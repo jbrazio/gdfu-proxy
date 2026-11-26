@@ -190,6 +190,21 @@ class ProxySourceTests(unittest.TestCase):
         self.assertIn("delayMicroseconds(400);", received)
         self.assertIn("serviceRfOps();", queue)
 
+    def test_xiao_s3_wio_proxy_drives_rxen_and_skips_heltec_pins(self) -> None:
+        """XIAO Wio-SX1262: RXEN on GPIO38 gates the RF switch; Heltec VEXT/LED pins are not touched."""
+        root = Path(__file__).parents[1]
+        config = (root / "platformio.ini").read_text(encoding="utf-8")
+        source = (root / "src" / "main.cpp").read_text(encoding="utf-8")
+        driver = (root / "src" / "sx1262.cpp").read_text(encoding="utf-8")
+        self.assertIn("[env:xiao_s3_wio_proxy]", config)
+        self.assertIn("-DSX1262_PIN_RXEN=38", config)
+        self.assertIn("#elif defined(PROXY_BOARD_XIAO_S3_WIO)", source)
+        self.assertNotIn("#if !defined(PROXY_RADIO_SX1276)\n    pinMode(PIN_VEXT", source)
+        receive = driver[driver.index("int sx1262_start_receive") : driver.index("int sx1262_read_received")]
+        send = driver[driver.index("int sx1262_send_start") : driver.index("int sx1262_send_poll")]
+        self.assertIn("setRxEnable(true);", receive)
+        self.assertIn("setRxEnable(false);", send)
+
     def test_lora32_initializes_oled(self) -> None:
         """The TTGO OLED must be initialized like every other board."""
         source = (Path(__file__).parents[1] / "src" / "main.cpp").read_text(encoding="utf-8")

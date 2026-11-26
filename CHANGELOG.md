@@ -9,6 +9,7 @@ All notable changes to this project are documented in this file. Format inspired
 - Proxy storage accepts ZephCore (MeshCore Zephyr port) packages, which name their files `zephyr.bin` and `zephyr.dat`.
 - Five-second boot splash with the proxy name, firmware version and `by kasvoton * meshcore.pt` credit.
 - TTGO LoRa32 V1.6 (SX1276) proxy target.
+- Seeed XIAO ESP32S3 & Wio-SX1262 Kit with 3D case proxy target, `xiao_s3_wio_proxy`.
 - DFU status notifications carry an 11th byte: gFSK RSSI (dBm, signed) of the last ACK/NACK from the selected target, 0 until one arrives (real readings clamp to <= -1). Reset on target select, START_DFU and BLE disconnect. Apps that accept >= 10 bytes ignore it.
 - Release assets include `<board>-<version>-merged.bin` (bootloader + partitions + app, flash at `0x0`).
 
