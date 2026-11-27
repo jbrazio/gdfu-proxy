@@ -101,7 +101,11 @@
 #define PIN_MOSI 10
 #define PIN_MISO 11
 #define PIN_VEXT 36
+#if defined(PROXY_BOARD_HELTEC_WSL_V3)
+#define PIN_OLED_RST -1 // Wireless Stick Lite V3 has no display; an SSD1306 wired to 17/18 still works.
+#else
 #define PIN_OLED_RST 21
+#endif
 #define PIN_OLED_SCL 18
 #define PIN_OLED_SDA 17
 #define PIN_USER_BUTTON 0 // MeshCore Heltec V3 user button, active low.
@@ -479,7 +483,7 @@ void initOled() {
     Wire.beginTransmission(OLED_ADDR);
     const int oledAck = Wire.endTransmission();
     DEBUG_SERIAL("[OLED] ack=%d\n", oledAck); // 0 = panel answered.
-    if (oledAck != 0) { // No panel (e.g. bare XIAO kit): skip OLED so loop() never blocks on I2C.
+    if (oledAck != 0) { // No panel (e.g. Heltec WSL V3, bare XIAO kit): skip OLED so loop() never blocks on I2C.
         Wire.end();
         return;
     }

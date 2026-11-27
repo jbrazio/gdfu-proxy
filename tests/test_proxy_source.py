@@ -190,6 +190,17 @@ class ProxySourceTests(unittest.TestCase):
         self.assertIn("delayMicroseconds(400);", received)
         self.assertIn("serviceRfOps();", queue)
 
+    def test_heltec_wsl_v3_proxy_runs_headless(self) -> None:
+        """WSL V3 has no OLED: no reset pin, and a missing panel must skip OLED init."""
+        root = Path(__file__).parents[1]
+        config = (root / "platformio.ini").read_text(encoding="utf-8")
+        source = (root / "src" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn("[env:heltec_wsl_v3_proxy]", config)
+        self.assertIn("-DPROXY_BOARD_HELTEC_WSL_V3=1", config)
+        self.assertIn("#if defined(PROXY_BOARD_HELTEC_WSL_V3)\n#define PIN_OLED_RST -1", source)
+        init = source[source.index("void initOled()") : source.index("oledReady = true;")]
+        self.assertIn("if (oledAck != 0) {", init)
+
     def test_xiao_s3_wio_proxy_drives_rxen_and_skips_heltec_pins(self) -> None:
         """XIAO Wio-SX1262: RXEN on GPIO38 gates the RF switch; Heltec VEXT/LED pins are not touched."""
         root = Path(__file__).parents[1]

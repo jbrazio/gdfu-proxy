@@ -7,8 +7,9 @@ Implementation boundary of the ESP32 BLE↔RF bridge. Byte layouts: [BLE protoco
 `platformio.ini`:
 
 - `heltec_v3_proxy`: board `heltec_wifi_lora_32_V3` (Heltec WiFi LoRa 32 V3: ESP32-S3 + SX1262), raw SX1262 backend.
+- `heltec_wsl_v3_proxy`: same board definition and pins as `heltec_v3_proxy` (Heltec Wireless Stick Lite V3: ESP32-S3 + SX1262, no OLED). The proxy probes the SSD1306 at boot and runs headless when it does not answer.
 - `lora32_v1_6_proxy`: board `ttgo-lora32-v1` (LILYGO TTGO LoRa32 V1.6: ESP32 + SX1276), raw SX1276 FSK backend. SX1276 RX bandwidth is the nearest supported 200 kHz on both profiles, not the SX1262 exact 187.2 kHz.
-- Matching `_debug` environments (`heltec_v3_proxy_debug`, `lora32_v1_6_proxy_debug`) add debug flags; CI builds the two release environments.
+- Matching `_debug` environments (`heltec_v3_proxy_debug`, `lora32_v1_6_proxy_debug`) add debug flags; CI builds the release environments.
 - Both use platform `espressif32@6.5.0` and Arduino framework. Both runtime-select profiles 433.175 MHz and 864.100 MHz; selected hardware radio must support its profile's band.
 - Custom partition tables with a `spiffs`-labeled data partition: `partitions.csv` (Heltec, 8 MB flash: 0x4C0000 = 4.75 MiB at 0x340000) and `partitions_lora32.csv` (TTGO, 4 MB flash: 0x210000 ≈ 2.06 MiB at 0x1F0000); filesystem LittleFS.
 - `-O2 -Wall -Wextra`; serial monitor 115200 on UART0 (USB CDC stays disabled so `Serial` reaches the CP210x bridge).

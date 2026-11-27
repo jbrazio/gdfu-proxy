@@ -9,6 +9,7 @@ All notable changes to this project are documented in this file. Format inspired
 - Proxy storage accepts packages whatever `.dat` and `.bin` file names their `manifest.json` gives, so ZephCore and other renamed packages work.
 - Five-second boot splash with the proxy name, firmware version and `by kasvoton * meshcore.pt` credit.
 - TTGO LoRa32 V1.6 (SX1276) proxy target.
+- Heltec Wireless Stick Lite V3 (SX1262) proxy target, `heltec_wsl_v3_proxy`. The board has no display. The proxy runs without one, and an SSD1306 wired to GPIO17 (SDA) and GPIO18 (SCL) still works.
 - Seeed XIAO ESP32S3 & Wio-SX1262 Kit with 3D case proxy target, `xiao_s3_wio_proxy`.
 - DFU status notifications carry an 11th byte: gFSK RSSI (dBm, signed) of the last ACK/NACK from the selected target, 0 until one arrives (real readings clamp to <= -1). Reset on target select, START_DFU and BLE disconnect. Apps that accept >= 10 bytes ignore it.
 - Release assets include `<board>-<version>-merged.bin` (bootloader + partitions + app, flash at `0x0`).
