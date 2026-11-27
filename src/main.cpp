@@ -79,7 +79,20 @@
 #define PIN_OLED_SCL 22
 #define PIN_OLED_SDA 21
 #define PIN_USER_BUTTON 0 // TTGO LoRa32 V1.6 user button, active low.
+#elif defined(PROXY_BOARD_XIAO_S3_WIO)
+#define PIN_NSS 41
+#define PIN_BUSY 40
+#define PIN_DIO1 39
+#define PIN_NRST 42
+#define PIN_SCK 7
+#define PIN_MOSI 9
+#define PIN_MISO 8
+#define PIN_OLED_RST -1 // Kit has no display; an optional XIAO expansion-board SSD1306 sits on D4/D5.
+#define PIN_OLED_SCL 6
+#define PIN_OLED_SDA 5
+#define PIN_USER_BUTTON 21 // Wio-SX1262 user button, active low (MeshCore/Meshtastic mapping).
 #else
+#define BOARD_HELTEC_V3 1
 #define PIN_NSS 8
 #define PIN_BUSY 13
 #define PIN_DIO1 14
@@ -451,7 +464,7 @@ void showBootSplash() {
         }
     }
     pushOled();
-    delay(3000);
+    delay(5000);
 }
 
 void initOled() {
@@ -470,7 +483,7 @@ void initOled() {
     Wire.beginTransmission(OLED_ADDR);
     const int oledAck = Wire.endTransmission();
     DEBUG_SERIAL("[OLED] ack=%d\n", oledAck); // 0 = panel answered.
-    if (oledAck != 0) { // No panel (e.g. Wireless Stick Lite V3): skip OLED so loop() never blocks on I2C.
+    if (oledAck != 0) { // No panel (e.g. Heltec WSL V3, bare XIAO kit): skip OLED so loop() never blocks on I2C.
         Wire.end();
         return;
     }
@@ -1715,7 +1728,7 @@ class TxPowerCallbacks : public BLECharacteristicCallbacks {
     radioReady = false;
     digitalWrite(PIN_NSS, HIGH);
     gpio_hold_en(static_cast<gpio_num_t>(PIN_NSS));
-#if !defined(PROXY_RADIO_SX1276)
+#if defined(BOARD_HELTEC_V3)
     pinMode(35, OUTPUT); // MeshCore Heltec V3 LoRa TX LED.
     digitalWrite(35, LOW);
     gpio_hold_en(GPIO_NUM_35);
@@ -1730,7 +1743,7 @@ class TxPowerCallbacks : public BLECharacteristicCallbacks {
     gpio_hold_en(static_cast<gpio_num_t>(PIN_OLED_RST));
 #endif
     Wire.end();
-#if !defined(PROXY_RADIO_SX1276)
+#if defined(BOARD_HELTEC_V3)
     digitalWrite(PIN_VEXT, HIGH); // Heltec V3 VEXT is active low.
     gpio_hold_en(static_cast<gpio_num_t>(PIN_VEXT));
 #endif
@@ -1763,24 +1776,24 @@ void serviceStandbyButton() {
 
 void setup() {
 #if DEBUG
-    Serial.begin(115200); // Heltec V3 UART0 -> CP210x bridge (no USB CDC)
+    Serial.begin(115200); // Heltec V3/LoRa32: UART0 -> USB bridge; XIAO S3: USB CDC
     DEBUG_PRINTLN("[BOOT] start");
 #endif
     gpio_deep_sleep_hold_dis();
     gpio_hold_dis(static_cast<gpio_num_t>(PIN_NSS));
-#if !defined(PROXY_RADIO_SX1276)
+#if defined(BOARD_HELTEC_V3)
     gpio_hold_dis(GPIO_NUM_35);
 #endif
 #if PIN_OLED_RST >= 0
     gpio_hold_dis(static_cast<gpio_num_t>(PIN_OLED_RST));
 #endif
-#if !defined(PROXY_RADIO_SX1276)
+#if defined(BOARD_HELTEC_V3)
     gpio_hold_dis(static_cast<gpio_num_t>(PIN_VEXT));
 #endif
     DEBUG_PRINTLN("[BOOT] holds released");
 
     pinMode(PIN_USER_BUTTON, INPUT_PULLUP);
-#if !defined(PROXY_RADIO_SX1276)
+#if defined(BOARD_HELTEC_V3)
     pinMode(PIN_VEXT, OUTPUT);
     digitalWrite(PIN_VEXT, LOW);
     delay(10);

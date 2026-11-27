@@ -6,9 +6,11 @@ All notable changes to this project are documented in this file. Format inspired
 
 ### Added
 
-- Three-second boot splash with the proxy name, firmware version and `by kasvoton * meshcore.pt` credit.
+- Proxy storage accepts ZephCore (MeshCore Zephyr port) packages, which name their files `zephyr.bin` and `zephyr.dat`.
+- Five-second boot splash with the proxy name, firmware version and `by kasvoton * meshcore.pt` credit.
 - TTGO LoRa32 V1.6 (SX1276) proxy target.
 - Heltec Wireless Stick Lite V3 (SX1262) proxy target, `heltec_wsl_v3_proxy`. The board has no display. The proxy runs without one, and an SSD1306 wired to GPIO17 (SDA) and GPIO18 (SCL) still works.
+- Seeed XIAO ESP32S3 & Wio-SX1262 Kit with 3D case proxy target, `xiao_s3_wio_proxy`.
 - DFU status notifications carry an 11th byte: gFSK RSSI (dBm, signed) of the last ACK/NACK from the selected target, 0 until one arrives (real readings clamp to <= -1). Reset on target select, START_DFU and BLE disconnect. Apps that accept >= 10 bytes ignore it.
 - Release assets include `<board>-<version>-merged.bin` (bootloader + partitions + app, flash at `0x0`).
 
@@ -18,6 +20,7 @@ All notable changes to this project are documented in this file. Format inspired
 
 ### Fixed
 
+- SX1262 gFSK RX bandwidth is now 187.2 kHz as documented. It was 117.3 kHz, narrower than the 80 kbps / 28 kHz signal.
 - Heltec V3 target signal strength now reports RSSI instead of a constant -1 dBm.
 - OLED `ERR` counter resets when a new upload starts (START_DFU) instead of accumulating across sessions.
 - BLE task and `loop()` queue handoff is now lock-protected (`portMUX_TYPE`); an unlocked push during `shift()` could duplicate one chunk and drop the next, surfacing as a CRC16 NACK at FINISH.
