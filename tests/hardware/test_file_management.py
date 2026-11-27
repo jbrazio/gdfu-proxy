@@ -42,14 +42,15 @@ E_IO, E_OFFSET, E_CRC, E_INCOMPLETE, E_NO_UPLOAD, E_PACKAGE = 7, 8, 9, 10, 11, 1
 ARGS = argparse.Namespace(sim=False, mac=None, size=3000)
 
 
-def build_mockup_zip(app_size: int) -> bytes:
+def build_mockup_zip(app_size: int, dat_name: str = "firmware.dat", bin_name: str = "firmware.bin",
+                      zip_names: tuple[str, str] | None = None) -> bytes:
     """A package the app's parseFirmwareZip accepts (device type 82, valid CRC16)."""
     app = bytes((i * 31 + 7) & 0xFF for i in range(app_size))
     manifest = {
         "manifest": {
             "application": {
-                "bin_file": "firmware.bin",
-                "dat_file": "firmware.dat",
+                "bin_file": bin_name,
+                "dat_file": dat_name,
                 "init_packet_data": {
                     "application_version": 1,
                     "device_revision": 65535,  # supported profile value
@@ -66,8 +67,9 @@ def build_mockup_zip(app_size: int) -> bytes:
     # (and the app, after Task 4 parity) accepts method 0 only.
     with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:
         z.writestr("manifest.json", json.dumps(manifest))
-        z.writestr("firmware.dat", bytes(range(14)))
-        z.writestr("firmware.bin", app)
+        zip_dat, zip_bin = zip_names or (dat_name, bin_name)
+        z.writestr(zip_dat, bytes(range(14)))
+        z.writestr(zip_bin, app)
     return out.getvalue()
 
 
@@ -198,7 +200,7 @@ class SimLink:
 
     def _is_package(self, buf: bytes) -> bool:
         """Mirror the proxy's stored-package validation (docs/PROTOCOL_BLE.md):
-        ZIP magic, required stored entries, no extras or duplicates."""
+        ZIP magic, stored entries, exactly manifest.json plus the files it names."""
         if buf[:4] != b"PK\x03\x04":
             return False
         try:
@@ -208,10 +210,11 @@ class SimLink:
                     if info.compress_type != zipfile.ZIP_STORED:
                         return False
                     names.append(info.filename)
-        except (zipfile.BadZipFile, OSError):
+                app = json.loads(z.read("manifest.json"))["manifest"]["application"]
+        except (zipfile.BadZipFile, OSError, KeyError, ValueError, TypeError):
             return False
-        required = {"manifest.json", "firmware.dat", "firmware.bin"}
-        return sorted(names) == sorted(required)
+        required = ["manifest.json", app.get("dat_file"), app.get("bin_file")]
+        return len(set(required)) == 3 and sorted(names) == sorted(map(str, required))
 
     def read(self, uuid: str) -> bytes:
         if uuid == STORAGE:
@@ -567,6 +570,20 @@ class FileManagementTests(unittest.TestCase):
         # the proxy must accept it (same bytes as the round-trip test uses).
         self.ops.upload(NAME, self.mockup)
         self.assertEqual(self.ops.list(), {NAME: len(self.mockup)})
+
+    def test_custom_named_package_accepted(self):
+        # Entry names come from manifest.json, not a fixed list.
+        pkg = build_mockup_zip(ARGS.size, "app.dat", "app.bin")
+        self.ops.upload(NAME, pkg)
+        self.assertEqual(self.ops.download(NAME), pkg)
+
+    def test_manifest_naming_missing_entry_rejected(self):
+        pkg = build_mockup_zip(ARGS.size, "app.dat", "app.bin", ("firmware.dat", "firmware.bin"))
+        before = self.ops.list()
+        with self.assertRaises(ProxyError) as ctx:
+            self.ops.upload(NAME, pkg)
+        self.assertEqual(ctx.exception.code, E_PACKAGE)
+        self.assertEqual(self.ops.list(), before)
 
     def test_max_length_name_roundtrip(self):
         # 63 chars is the legal maximum (59-char stem + ".zip"); a truncated

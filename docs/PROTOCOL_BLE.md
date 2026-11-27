@@ -96,11 +96,12 @@ Replacing a file needs room for the new copy while the old one still exists; if 
 
 `UPLOAD_FINISH` stores an upload only when the completed archive is a supported GFSK package; otherwise it deletes the temporary file and returns `PACKAGE` (12). A package must:
 
-- be a structurally valid ZIP with exactly one `manifest.json`, one `firmware.dat`, and one `firmware.bin` — no duplicates, no extra entries, no path-containing names;
-- carry all three required entries stored (ZIP method 0);
+- be a structurally valid ZIP with exactly three entries: `manifest.json` plus the two files named by `manifest.application.dat_file` and `manifest.application.bin_file`. No duplicates, no extra entries;
+- use distinct `dat_file` and `bin_file` names, neither equal to `manifest.json`, each a plain JSON string (no escapes) of at most 63 bytes, matched byte for byte against the entry names;
+- carry all three entries stored (ZIP method 0);
 - declare `device_type: 82` and `device_revision: 65535` in `manifest.json` under `manifest.application.init_packet_data`;
-- have non-empty `firmware.dat` and `firmware.bin`;
-- have a manifest `firmware_crc16` equal to the Nordic CRC-16/CCITT-FALSE over the exact `firmware.bin` bytes.
+- have non-empty `.dat` and `.bin` entries;
+- have a manifest `firmware_crc16` equal to the Nordic CRC-16/CCITT-FALSE over the exact `.bin` bytes.
 
 Validation runs in the file worker with fixed-size buffers: no extraction, no inflation, no whole-file allocation, no dependencies. After validation, the proxy first calls `LittleFS.rename` on the temporary and destination paths. If that fails while the destination exists, it deletes the destination and retries the rename. This fallback is not atomic: if the retry fails, the old destination has already been lost and the temporary file is deleted.
 
