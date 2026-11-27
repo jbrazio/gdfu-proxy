@@ -70,7 +70,7 @@ jobs:
       fail-fast: false
       max-parallel: 15
       matrix:
-        board: [heltec_v3_proxy, lora32_v1_6_proxy]
+        board: [heltec_v3_proxy, heltec_wsl_v3_proxy, lora32_v1_6_proxy]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6

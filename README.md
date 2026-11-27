@@ -42,6 +42,7 @@ GDFU Proxy is ESP32 firmware that bridges the application's BLE GATT connection 
 | Board | Radio | PlatformIO environment | Validation |
 | --- | --- | --- | --- |
 | Heltec WiFi LoRa 32 V3 | SX1262 | `heltec_v3_proxy`, default | Hardware-validated |
+| Heltec Wireless Stick Lite V3 | SX1262 | `heltec_wsl_v3_proxy` | Hardware validation not recorded |
 | TTGO LoRa32 V1.6 | SX1276 | `lora32_v1_6_proxy` | Hardware validation not recorded |
 
 #### Radio profiles
@@ -80,6 +81,7 @@ Requires [PlatformIO](https://platformio.org/):
 
 ```bash
 pio run                                        # Heltec V3
+pio run -e heltec_wsl_v3_proxy                  # Heltec Wireless Stick Lite V3
 pio run -e lora32_v1_6_proxy                    # TTGO LoRa32 V1.6
 pio run -e heltec_v3_proxy -t upload -t monitor
 ```
@@ -93,6 +95,7 @@ Release assets per board:
 
 ```bash
 esptool.py --chip esp32s3 write_flash 0x0 heltec_v3_proxy-<version>-merged.bin # Heltec V3
+esptool.py --chip esp32s3 write_flash 0x0 heltec_wsl_v3_proxy-<version>-merged.bin # Heltec WSL V3
 esptool.py --chip esp32 write_flash 0x0 lora32_v1_6_proxy-<version>-merged.bin # TTGO LoRa32
 ```
 
