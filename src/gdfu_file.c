@@ -78,7 +78,7 @@ gdfu_file_err_t gdfu_upload_finish(gdfu_upload_t *u) {
 #define GDFU_ZIP_EOCD_SEARCH (GDFU_ZIP_EOCD_SIZE + GDFU_ZIP_MAX_COMMENT)
 #define GDFU_ZIP_SCAN_CHUNK 128u
 #define GDFU_ZIP_RECORD_CHUNK 64u
-#define GDFU_ZIP_NAME_SIZE 16u
+#define GDFU_ZIP_NAME_SIZE 64u
 #define GDFU_JSON_KEY_SIZE 32u
 #define GDFU_JSON_MAX_DEPTH 16u
 
@@ -106,6 +106,8 @@ struct gdfu_json_stream {
     uint32_t buffer_offset;
     bool failed;
     uint8_t values_found;
+    char dat_file[GDFU_ZIP_NAME_SIZE];
+    char bin_file[GDFU_ZIP_NAME_SIZE];
     uint32_t device_type;
     uint32_t device_revision;
     uint32_t firmware_crc16;
@@ -520,6 +522,29 @@ static int gdfu_json_record_number(struct gdfu_json_stream *stream, const char *
     return 1;
 }
 
+/* Same contract as gdfu_json_record_number, for the application file names. */
+static int gdfu_json_record_name(struct gdfu_json_stream *stream, const char *key)
+{
+    uint8_t bit;
+    char *name;
+
+    if (strcmp(key, "dat_file") == 0) {
+        bit = 8u;
+        name = stream->dat_file;
+    } else if (strcmp(key, "bin_file") == 0) {
+        bit = 16u;
+        name = stream->bin_file;
+    } else {
+        return 0;
+    }
+    if ((stream->values_found & bit) != 0u ||
+        !gdfu_json_string(stream, name, GDFU_ZIP_NAME_SIZE)) {
+        return -1;
+    }
+    stream->values_found |= bit;
+    return 1;
+}
+
 static bool gdfu_json_object(struct gdfu_json_stream *stream, unsigned depth, unsigned path)
 {
     uint8_t value;
@@ -547,8 +572,13 @@ static bool gdfu_json_object(struct gdfu_json_stream *stream, unsigned depth, un
             if (recorded < 0) {
                 return false;
             }
+        } else if (path == 2u) {
+            recorded = gdfu_json_record_name(stream, key);
+            if (recorded < 0) {
+                return false;
+            }
         } else if (path == GDFU_JSON_PATH_UNKNOWN &&
-                   stream->values_found != 0u) {
+                   (stream->values_found & 7u) != 0u) {
             /* Profile fields must come from one init_packet_data object, not
              * be assembled across several unrelated ones. */
             return false;
@@ -593,8 +623,10 @@ static bool gdfu_json_value(struct gdfu_json_stream *stream, unsigned depth, uns
     return gdfu_json_literal(stream, value);
 }
 
+/* On success returns the manifest's file names and firmware_crc16. */
 static bool gdfu_validate_manifest(gdfu_file_reader_t reader, void *context,
-                                   const struct gdfu_zip_entry *manifest, uint16_t crc16)
+                                   const struct gdfu_zip_entry *manifest, char *dat_file,
+                                   char *bin_file, uint16_t *crc16)
 {
     struct gdfu_json_stream stream;
     if (manifest->size == 0u) {
@@ -606,11 +638,13 @@ static bool gdfu_validate_manifest(gdfu_file_reader_t reader, void *context,
     stream.offset = manifest->data_offset;
     stream.size = manifest->size;
     if (!gdfu_json_value(&stream, 0u, 0u) || !gdfu_json_at_end(&stream) ||
-        stream.values_found != 7u || stream.device_type != GDFU_FILE_DEVICE_TYPE ||
-        stream.device_revision != GDFU_FILE_DEVICE_REVISION || stream.firmware_crc16 > UINT16_MAX ||
-        stream.firmware_crc16 != crc16) {
+        stream.values_found != 31u || stream.device_type != GDFU_FILE_DEVICE_TYPE ||
+        stream.device_revision != GDFU_FILE_DEVICE_REVISION || stream.firmware_crc16 > UINT16_MAX) {
         return false;
     }
+    memcpy(dat_file, stream.dat_file, GDFU_ZIP_NAME_SIZE);
+    memcpy(bin_file, stream.bin_file, GDFU_ZIP_NAME_SIZE);
+    *crc16 = (uint16_t)stream.firmware_crc16;
     return true;
 }
 
@@ -640,17 +674,21 @@ gdfu_file_err_t gdfu_zip_validate_reader(gdfu_file_reader_t reader, void *contex
 {
     uint8_t eocd[GDFU_ZIP_EOCD_SIZE];
     uint8_t central[46];
-    uint8_t name[GDFU_ZIP_NAME_SIZE];
     struct gdfu_zip_entry entries[3];
+    char dat_file[GDFU_ZIP_NAME_SIZE];
+    char bin_file[GDFU_ZIP_NAME_SIZE];
     uint32_t eocd_offset;
     uint32_t directory_offset;
     uint32_t directory_size;
     uint32_t directory_end;
     uint32_t cursor;
     uint16_t count;
-    uint8_t found = 0u;
     size_t index;
+    size_t manifest_index = 3u;
+    size_t dat_index = 3u;
+    size_t bin_index = 3u;
     uint16_t crc16;
+    uint16_t manifest_crc16;
 
     if (reader == NULL || !gdfu_zip_find_eocd(reader, context, file_size, &eocd_offset, eocd) ||
         gdfu_get16(eocd + 4u) != 0u || gdfu_get16(eocd + 6u) != 0u ||
@@ -677,8 +715,7 @@ gdfu_file_err_t gdfu_zip_validate_reader(gdfu_file_reader_t reader, void *contex
         uint32_t compressed_size;
         uint32_t uncompressed_size;
         uint32_t record_size;
-        uint8_t bit;
-        struct gdfu_zip_entry *entry;
+        struct gdfu_zip_entry *entry = &entries[index];
 
         if (!gdfu_read(reader, context, file_size, cursor, central, sizeof(central)) ||
             gdfu_get32(central) != GDFU_ZIP_CENTRAL_SIGNATURE) {
@@ -703,45 +740,50 @@ gdfu_file_err_t gdfu_zip_validate_reader(gdfu_file_reader_t reader, void *contex
         if (record_size < 46u || !gdfu_range(directory_end, cursor, record_size)) {
             return GDFU_FILE_PACKAGE;
         }
-        if (!gdfu_read(reader, context, file_size, cursor + 46u, name, name_length)) {
+        if (name_length == 0u ||
+            !gdfu_read(reader, context, file_size, cursor + 46u, entry->name, name_length)) {
             return GDFU_FILE_PACKAGE;
         }
-        if (gdfu_name_equals(name, name_length, "manifest.json")) {
-            bit = 1u;
-            entry = &entries[0];
-        } else if (gdfu_name_equals(name, name_length, "firmware.dat")) {
-            bit = 2u;
-            entry = &entries[1];
-        } else if (gdfu_name_equals(name, name_length, "firmware.bin")) {
-            bit = 4u;
-            entry = &entries[2];
-        } else if (gdfu_name_equals(name, name_length, "zephyr.dat")) {
-            /* ZephCore (MeshCore Zephyr port) names its Nordic DFU entries zephyr.*. */
-            bit = 8u;
-            entry = &entries[1];
-        } else if (gdfu_name_equals(name, name_length, "zephyr.bin")) {
-            bit = 16u;
-            entry = &entries[2];
-        } else {
-            return GDFU_FILE_PACKAGE;
+        if (gdfu_name_equals(entry->name, name_length, "manifest.json")) {
+            if (manifest_index != 3u) {
+                return GDFU_FILE_PACKAGE;
+            }
+            manifest_index = index;
         }
-        if ((found & bit) != 0u) {
-            return GDFU_FILE_PACKAGE;
-        }
-        found |= bit;
         entry->local_offset = gdfu_get32(central + 42u);
         entry->name_length = name_length;
-        memcpy(entry->name, name, name_length);
         if (!gdfu_zip_read_local(reader, context, file_size, directory_offset, entry, method, flags,
                                  compressed_size, uncompressed_size)) {
             return GDFU_FILE_PACKAGE;
         }
         cursor += record_size;
     }
-    /* manifest + firmware.{dat,bin}, or manifest + zephyr.{dat,bin}; never mixed. */
-    if (cursor != directory_end || (found != 7u && found != 25u) ||entries[1].size == 0u || entries[2].size == 0u ||
-        !gdfu_crc16_entry(reader, context, file_size, &entries[2], &crc16) ||
-        !gdfu_validate_manifest(reader, context, &entries[0], crc16)) {
+    /* The manifest names the other two entries; they must match exactly, one each. */
+    if (cursor != directory_end || manifest_index == 3u ||
+        !gdfu_validate_manifest(reader, context, &entries[manifest_index], dat_file, bin_file,
+                                &manifest_crc16) ||
+        dat_file[0] == '\0' || bin_file[0] == '\0' || strcmp(dat_file, bin_file) == 0 ||
+        strcmp(dat_file, "manifest.json") == 0 || strcmp(bin_file, "manifest.json") == 0) {
+        return GDFU_FILE_PACKAGE;
+    }
+    for (index = 0u; index < 3u; ++index) {
+        if (index == manifest_index) {
+            continue;
+        }
+        if (gdfu_name_equals(entries[index].name, entries[index].name_length, dat_file) &&
+            dat_index == 3u) {
+            dat_index = index;
+        } else if (gdfu_name_equals(entries[index].name, entries[index].name_length, bin_file) &&
+                   bin_index == 3u) {
+            bin_index = index;
+        } else {
+            return GDFU_FILE_PACKAGE;
+        }
+    }
+    if (dat_index == 3u || bin_index == 3u || entries[dat_index].size == 0u ||
+        entries[bin_index].size == 0u ||
+        !gdfu_crc16_entry(reader, context, file_size, &entries[bin_index], &crc16) ||
+        crc16 != manifest_crc16) {
         return GDFU_FILE_PACKAGE;
     }
     return GDFU_FILE_OK;
