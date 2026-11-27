@@ -2,6 +2,7 @@
 """Cross-platform BLE-to-GFSK firmware streamer."""
 
 import asyncio
+import json
 import struct
 import sys
 import time
@@ -157,8 +158,9 @@ async def main() -> None:
     package_path = sys.argv[1] if len(sys.argv) > 1 else "firmware/Heltec_t114_repeater.zip"
     limit_chunks = int(sys.argv[2]) if len(sys.argv) > 2 else 0
     with zipfile.ZipFile(package_path) as package:
-        init_data = package.read("firmware.dat")
-        image = package.read("firmware.bin")
+        application = json.loads(package.read("manifest.json"))["manifest"]["application"]
+        init_data = package.read(application["dat_file"])
+        image = package.read(application["bin_file"])
 
     app_size = len(image)
     total_bytes = application_transfer_bytes(app_size, limit_chunks)
