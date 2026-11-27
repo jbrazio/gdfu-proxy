@@ -15,7 +15,7 @@ class ProxySourceTests(unittest.TestCase):
             "0x00, 0x20,",  # 32-bit preamble
             "0x10,",        # 16-bit sync word
             "0x13, 0x37, 0x00",
-            "GDFU_RX_BANDWIDTH_868_HZ ? 0x0B : 0x0A", # profile-specific RX bandwidth
+            "0x12, // rxBw = 187.2 kHz DSB", # SX126x RX bandwidth
             "0x08, 0x89",   # mandatory TX modulation workaround
             "0x08, 0xAC, 0x96",  # RX boosted gain
         ):
