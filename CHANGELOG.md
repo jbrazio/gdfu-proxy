@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file. Format inspired
 
 ### Added
 
-- Proxy storage accepts any Nordic DFU package whose `manifest.json` names its `.dat` and `.bin` files, so ZephCore and other renamed packages work.
+- Proxy storage accepts packages whatever `.dat` and `.bin` file names their `manifest.json` gives, so ZephCore and other renamed packages work.
 - Five-second boot splash with the proxy name, firmware version and `by kasvoton * meshcore.pt` credit.
 - TTGO LoRa32 V1.6 (SX1276) proxy target.
 - Seeed XIAO ESP32S3 & Wio-SX1262 Kit with 3D case proxy target, `xiao_s3_wio_proxy`.
