@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file. Format inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow CalVer `YYYY.M.K`, with `-rcN` for release candidates.
 
-## [Unreleased]
+## [2026.11.2] - 2026-11-28
 
 ### Added
 
