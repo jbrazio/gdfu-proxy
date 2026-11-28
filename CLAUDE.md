@@ -8,7 +8,8 @@ The changelog is for people flashing and running the proxy, not a git log: only 
 
 ## Git
 
-- Never commit directly to `master`.
-- Commits go mainly to `dev`.
-- Workflow: direct commit or branch merge → `dev` → PR → `master`.
+- Treat `master` as protected: never commit, push or merge to it directly.
+- Start all new work in a git worktree branched from `dev`.
+- Land every commit on `dev` through a PR; never commit directly to `dev`.
+- Workflow: worktree branch from `dev` → PR → `dev` → PR → `master`.
 - Open a PR to `master` only when the user asks for one.

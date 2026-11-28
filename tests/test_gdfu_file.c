@@ -134,12 +134,13 @@ static void finish_zip(struct zip_builder *zip, size_t comment_length)
 }
 
 static void make_package(struct zip_builder *zip, const char *manifest,
-                         const char *dat, const char *bin, size_t comment_length)
+                         const char *dat_name, const char *dat, const char *bin_name,
+                         const char *bin, size_t comment_length)
 {
   memset(zip, 0, sizeof(*zip));
   add_entry(zip, "manifest.json", (const uint8_t *)manifest, strlen(manifest), 0u);
-  add_entry(zip, "firmware.dat", (const uint8_t *)dat, strlen(dat), 0u);
-  add_entry(zip, "firmware.bin", (const uint8_t *)bin, strlen(bin), 0u);
+  add_entry(zip, dat_name, (const uint8_t *)dat, strlen(dat), 0u);
+  add_entry(zip, bin_name, (const uint8_t *)bin, strlen(bin), 0u);
   finish_zip(zip, comment_length);
 }
 
@@ -159,9 +160,20 @@ static gdfu_file_err_t validate(const struct zip_builder *zip)
   return gdfu_zip_validate_reader(memory_reader, (void *)zip, (uint32_t)zip->length);
 }
 
+#define APP_NAMES "\"bin_file\":\"firmware.bin\",\"dat_file\":\"firmware.dat\","
+
 static const char manifest_ok[] =
-    "{\"manifest\":{\"application\":{\"init_packet_data\":{\"device_type\":82,"
+    "{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":{\"device_type\":82,"
     "\"device_revision\":65535,\"firmware_crc16\":43514}}}}";
+
+static void manifest_with(char *out, const char *dat_name, const char *bin_name)
+{
+  sprintf(out,
+          "{\"manifest\":{\"application\":{\"bin_file\":\"%s\",\"dat_file\":\"%s\","
+          "\"init_packet_data\":{\"device_type\":82,\"device_revision\":65535,"
+          "\"firmware_crc16\":43514}}}}",
+          bin_name, dat_name);
+}
 
 static void test_package_policy(void)
 {
@@ -180,8 +192,110 @@ static void test_nordic_crc16(void)
 static void test_accepts_exact_stored_package_with_bounded_comment(void)
 {
   struct zip_builder zip;
-  make_package(&zip, manifest_ok, "init", "firmware image", 65535u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 65535u);
   CHECK(validate(&zip) == GDFU_FILE_OK);
+}
+
+static void test_manifest_names_entries(void)
+{
+  struct zip_builder zip;
+  char manifest[512];
+  char long_name[65];
+  const char *no_dat =
+      "{\"manifest\":{\"application\":{\"bin_file\":\"firmware.bin\",\"init_packet_data\":{"
+      "\"device_type\":82,\"device_revision\":65535,\"firmware_crc16\":43514}}}}";
+
+  /* accepted */
+  manifest_with(manifest, "app.dat", "app.bin");
+  make_package(&zip, manifest, "app.dat", "init", "app.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_OK);
+
+  manifest_with(manifest, "zephyr.dat", "zephyr.bin");
+  make_package(&zip, manifest, "zephyr.dat", "init", "zephyr.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_OK);
+
+  memset(long_name, 'b', 63u);
+  long_name[63] = '\0';
+  manifest_with(manifest, "app.dat", long_name);
+  make_package(&zip, manifest, "app.dat", "init", long_name, "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_OK);
+
+  memset(&zip, 0, sizeof(zip));
+  add_entry(&zip, "firmware.bin", (const uint8_t *)"firmware image", 14u, 0u);
+  add_entry(&zip, "manifest.json", (const uint8_t *)manifest_ok, strlen(manifest_ok), 0u);
+  add_entry(&zip, "firmware.dat", (const uint8_t *)"init", 4u, 0u);
+  finish_zip(&zip, 0u);
+  CHECK(validate(&zip) == GDFU_FILE_OK);
+
+  /* rejected */
+  manifest_with(manifest, "firmware.dat", "app.bin");
+  make_package(&zip, manifest, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  manifest_with(manifest, "app.bin", "app.bin");
+  make_package(&zip, manifest, "app.bin", "init", "app.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  manifest_with(manifest, "app.dat", "manifest.json");
+  make_package(&zip, manifest, "app.dat", "init", "manifest.json", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  make_package(&zip, no_dat, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  manifest_with(manifest, "app.dat", "app.bin");
+  memcpy(strstr(manifest, "\"app.dat\""), "1        ", 9u);
+  make_package(&zip, manifest, "app.dat", "init", "app.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  /* names only at the top level or in init_packet_data are not application names */
+  make_package(&zip,
+               "{\"bin_file\":\"firmware.bin\",\"dat_file\":\"firmware.dat\",\"manifest\":{"
+               "\"application\":{\"init_packet_data\":{\"device_type\":82,"
+               "\"device_revision\":65535,\"firmware_crc16\":43514}}}}",
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+  make_package(&zip,
+               "{\"manifest\":{\"application\":{\"init_packet_data\":{\"bin_file\":"
+               "\"firmware.bin\",\"dat_file\":\"firmware.dat\",\"device_type\":82,"
+               "\"device_revision\":65535,\"firmware_crc16\":43514}}}}",
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  /* escaped names are rejected */
+  manifest_with(manifest, "app\\u002edat", "app.bin");
+  make_package(&zip, manifest, "app.dat", "init", "app.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  /* 64 bytes does not fit */
+  memset(long_name, 'b', 64u);
+  long_name[64] = '\0';
+  manifest_with(manifest, "app.dat", long_name);
+  make_package(&zip, manifest, "app.dat", "init", long_name, "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  /* case matters */
+  manifest_with(manifest, "firmware.dat", "Firmware.bin");
+  make_package(&zip, manifest, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  /* duplicate key */
+  make_package(&zip,
+               "{\"manifest\":{\"application\":{\"bin_file\":\"firmware.bin\","
+               "\"bin_file\":\"firmware.bin\",\"dat_file\":\"firmware.dat\","
+               "\"init_packet_data\":{\"device_type\":82,\"device_revision\":65535,"
+               "\"firmware_crc16\":43514}}}}",
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
+
+  /* zip has app.bin twice */
+  manifest_with(manifest, "app.bin", "app.bin");
+  memset(&zip, 0, sizeof(zip));
+  add_entry(&zip, "manifest.json", (const uint8_t *)manifest, strlen(manifest), 0u);
+  add_entry(&zip, "app.bin", (const uint8_t *)"init", 4u, 0u);
+  add_entry(&zip, "app.bin", (const uint8_t *)"firmware image", 14u, 0u);
+  finish_zip(&zip, 0u);
+  CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 }
 
 static void test_accepts_nrfutil_manifest_with_ignored_fields(void)
@@ -193,7 +307,7 @@ static void test_accepts_nrfutil_manifest_with_ignored_fields(void)
                "    \"application_version\": 4294967295,\n    \"device_revision\": 65535,\n"
                "    \"device_type\": 82,\n    \"firmware_crc16\": 43514,\n"
                "    \"softdevice_req\": [182, 183]\n   }\n  },\n  \"dfu_version\": 0.5\n }\n}\n",
-               "init", "firmware image", 0u);
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_OK);
 }
 
@@ -204,50 +318,50 @@ static void test_rejects_bad_profile_and_manifest_fields(void)
 
   memcpy(manifest, manifest_ok, sizeof(manifest));
   memcpy(strstr(manifest, "65535"), "65534", 5u);
-  make_package(&zip, manifest, "init", "firmware image", 0u);
+  make_package(&zip, manifest, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   make_package(&zip,
-               "{\"manifest\":{\"application\":{\"init_packet_data\":{\"device_revision\":65535,\"firmware_crc16\":43514}}}}",
-               "init", "firmware image", 0u);
+               "{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":{\"device_revision\":65535,\"firmware_crc16\":43514}}}}",
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   memcpy(manifest, manifest_ok, sizeof(manifest));
   memcpy(strstr(manifest, "82,"), "81,", 3u);
-  make_package(&zip, manifest, "init", "firmware image", 0u);
+  make_package(&zip, manifest, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   memcpy(manifest, manifest_ok, sizeof(manifest));
   memcpy(strstr(manifest, "43514"), "43515", 5u);
-  make_package(&zip, manifest, "init", "firmware image", 0u);
+  make_package(&zip, manifest, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   make_package(&zip,
-               "{\"manifest\":{\"application\":{\"init_packet_data\":{\"device_type\":82,\"device_type\":82,\"device_revision\":65535,\"firmware_crc16\":43514}}}}",
-               "init", "firmware image", 0u);
+               "{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":{\"device_type\":82,\"device_type\":82,\"device_revision\":65535,\"firmware_crc16\":43514}}}}",
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 }
 
 static void test_rejects_invalid_zip_structure_and_offsets(void)
 {
   struct zip_builder zip;
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set32(&zip, zip.eocd_offset, 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set32(&zip, zip.eocd_offset + 16u, (uint32_t)zip.length);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set32(&zip, zip.entries[0].central_offset + 42u, (uint32_t)zip.length);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set32(&zip, zip.eocd_offset + 12u, 1u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
-  make_package(&zip, manifest_ok, "init", "firmware image", 1u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 1u);
   set16(&zip, zip.eocd_offset + 20u, 2u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 }
@@ -257,7 +371,7 @@ static void test_rejects_hostile_sizes_names_and_search_window(void)
   struct zip_builder zip;
 
   /* Declared size runs past the file: must fail before any read of that range. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set32(&zip, zip.entries[2].central_offset + 20u, 0xffffffffu);
   set32(&zip, zip.entries[2].central_offset + 24u, 0xffffffffu);
   set32(&zip, zip.entries[2].local_offset + 18u, 0xffffffffu);
@@ -265,28 +379,28 @@ static void test_rejects_hostile_sizes_names_and_search_window(void)
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   /* Local header disagrees with the central directory about the name. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   zip.bytes[zip.entries[1].local_offset + 30u] = 'X';
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   /* Central name length points past the directory. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set16(&zip, zip.entries[2].central_offset + 28u, 15u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   /* Local extra length pushes data past the central directory. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set16(&zip, zip.entries[2].local_offset + 28u, 500u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   /* Encrypted/data-descriptor flag is outside the accepted profile. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set16(&zip, zip.entries[0].central_offset + 8u, 8u);
   set16(&zip, zip.entries[0].local_offset + 6u, 8u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   /* Truncated archive and tiny inputs have no EOCD. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   zip.length = zip.eocd_offset + 10u;
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
   zip.length = 3u;
@@ -295,7 +409,7 @@ static void test_rejects_hostile_sizes_names_and_search_window(void)
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   /* An EOCD buried deeper than 22 + 65535 bytes from the end is never searched for. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   memset(&zip.bytes[zip.length], 0, 65536u);
   zip.length += 65536u;
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
@@ -306,9 +420,9 @@ static void test_rejects_empty_bin_even_when_manifest_crc_matches_empty(void)
   struct zip_builder zip;
   /* CRC16 of zero bytes is the 0xffff seed, so only the explicit empty check can reject this. */
   make_package(&zip,
-               "{\"manifest\":{\"application\":{\"init_packet_data\":{\"device_type\":82,"
+               "{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":{\"device_type\":82,"
                "\"device_revision\":65535,\"firmware_crc16\":65535}}}}",
-               "init", "", 0u);
+               "firmware.dat", "init", "firmware.bin", "", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 }
 
@@ -332,7 +446,7 @@ static void test_rejects_data_overlapping_central_directory(void)
 static void test_rejects_stray_bytes_after_last_directory_record(void)
 {
   struct zip_builder zip;
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   memmove(&zip.bytes[zip.eocd_offset + 4u], &zip.bytes[zip.eocd_offset], 22u);
   memset(&zip.bytes[zip.eocd_offset], 0, 4u);
   zip.eocd_offset += 4u;
@@ -344,7 +458,7 @@ static void test_rejects_stray_bytes_after_last_directory_record(void)
 static void test_rejects_nonexact_entries_and_methods(void)
 {
   struct zip_builder zip;
-  make_package(&zip, manifest_ok, "init", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   set16(&zip, zip.entries[0].central_offset + 10u, 8u);
   set16(&zip, zip.entries[0].local_offset + 8u, 8u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
@@ -384,20 +498,20 @@ static void test_rejects_escaped_or_overlong_manifest_keys(void)
   struct zip_builder zip;
   const char *escaped[] = {
       /* \u0078 decodes to "x"; the profile object must not be found via it. */
-      "{\"manifest\":{\"application\":{\"init_packet_data\":{},\"\\u0078\":{"
+      "{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":{},\"\\u0078\":{"
       "\"device_type\":82,\"device_revision\":65535,\"firmware_crc16\":43514}}}}",
       /* prefix-only match on an escaped key must not record a field */
-      "{\"manifest\":{\"application\":{\"init_packet_data\":{\"device_type\":82,"
+      "{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":{\"device_type\":82,"
       "\"device_revision\\u0041\":65535,\"firmware_crc16\":43514}}}}",
       /* over-long key: must be rejected, not read as a truncated prefix */
       "{\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\":1,\"manifest\":{\"application\":"
-      "{\"init_packet_data\":{\"device_type\":82,\"device_revision\":65535,"
+      "{" APP_NAMES "\"init_packet_data\":{\"device_type\":82,\"device_revision\":65535,"
       "\"firmware_crc16\":43514}}}}",
   };
   size_t index;
 
   for (index = 0u; index < sizeof(escaped) / sizeof(escaped[0]); ++index) {
-    make_package(&zip, escaped[index], "init", "firmware image", 0u);
+    make_package(&zip, escaped[index], "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
     CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
   }
 }
@@ -406,16 +520,16 @@ static void test_rejects_manifest_nested_under_unrelated_key(void)
 {
   struct zip_builder zip;
   make_package(&zip,
-               "{\"x\":{\"manifest\":{\"application\":{\"init_packet_data\":"
+               "{\"x\":{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":"
                "{\"device_type\":82,\"device_revision\":65535,\"firmware_crc16\":43514}}}}}",
-               "init", "firmware image", 0u);
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 
   /* fields split across two init_packet_data objects must not combine */
   make_package(&zip,
-               "{\"manifest\":{\"application\":{\"init_packet_data\":{\"device_type\":82}},"
+               "{\"manifest\":{\"application\":{" APP_NAMES "\"init_packet_data\":{\"device_type\":82}},"
                "\"init_packet_data\":{\"device_revision\":65535,\"firmware_crc16\":43514}}}",
-               "init", "firmware image", 0u);
+               "firmware.dat", "init", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 }
 
@@ -425,14 +539,14 @@ static void test_accepts_comment_containing_eocd_signature(void)
   size_t index;
   /* Fake EOCD signature with fewer than 22 bytes left after it: the old scan
    * gave up (read past EOF) instead of continuing to the real record. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 12u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 12u);
   for (index = 0u; index < 4u; ++index) {
     zip.bytes[zip.eocd_offset + 22u + index] = (uint8_t)(0x06054b50u >> (8u * index));
   }
   CHECK(validate(&zip) == GDFU_FILE_OK);
 
   /* Same trick with more room: must also still find the real record. */
-  make_package(&zip, manifest_ok, "init", "firmware image", 24u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "firmware image", 24u);
   for (index = 0u; index < 4u; ++index) {
     zip.bytes[zip.eocd_offset + 22u + index] = (uint8_t)(0x06054b50u >> (8u * index));
   }
@@ -442,9 +556,9 @@ static void test_accepts_comment_containing_eocd_signature(void)
 static void test_rejects_empty_required_data(void)
 {
   struct zip_builder zip;
-  make_package(&zip, manifest_ok, "", "firmware image", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "", "firmware.bin", "firmware image", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
-  make_package(&zip, manifest_ok, "init", "", 0u);
+  make_package(&zip, manifest_ok, "firmware.dat", "init", "firmware.bin", "", 0u);
   CHECK(validate(&zip) == GDFU_FILE_PACKAGE);
 }
 
@@ -681,6 +795,7 @@ int main(void)
   test_package_policy();
   test_nordic_crc16();
   test_accepts_exact_stored_package_with_bounded_comment();
+  test_manifest_names_entries();
   test_accepts_nrfutil_manifest_with_ignored_fields();
   test_rejects_bad_profile_and_manifest_fields();
   test_rejects_invalid_zip_structure_and_offsets();

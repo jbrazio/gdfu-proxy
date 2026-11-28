@@ -42,7 +42,11 @@ GDFU Proxy is ESP32 firmware that bridges the application's BLE GATT connection 
 | Board | Radio | PlatformIO environment | Validation |
 | --- | --- | --- | --- |
 | Heltec WiFi LoRa 32 V3 | SX1262 | `heltec_v3_proxy`, default | Hardware-validated |
+| Heltec Wireless Stick Lite V3 | SX1262 | `heltec_wsl_v3_proxy` | Hardware validation not recorded |
 | TTGO LoRa32 V1.6 | SX1276 | `lora32_v1_6_proxy` | Hardware validation not recorded |
+| Seeed XIAO ESP32S3 & Wio-SX1262 Kit with 3D case | SX1262 | `xiao_s3_wio_proxy` | Hardware validation not recorded |
+
+The XIAO kit has no display. Hold the Wio-SX1262 user button for three seconds to enter standby. If you wire an SSD1306 OLED to D4 and D5, for example through the XIAO Expansion Board, the firmware drives it.
 
 #### Radio profiles
 
@@ -80,7 +84,9 @@ Requires [PlatformIO](https://platformio.org/):
 
 ```bash
 pio run                                        # Heltec V3
+pio run -e heltec_wsl_v3_proxy                  # Heltec Wireless Stick Lite V3
 pio run -e lora32_v1_6_proxy                    # TTGO LoRa32 V1.6
+pio run -e xiao_s3_wio_proxy                    # XIAO ESP32S3 & Wio-SX1262
 pio run -e heltec_v3_proxy -t upload -t monitor
 ```
 
@@ -93,7 +99,9 @@ Release assets per board:
 
 ```bash
 esptool.py --chip esp32s3 write_flash 0x0 heltec_v3_proxy-<version>-merged.bin # Heltec V3
+esptool.py --chip esp32s3 write_flash 0x0 heltec_wsl_v3_proxy-<version>-merged.bin # Heltec WSL V3
 esptool.py --chip esp32 write_flash 0x0 lora32_v1_6_proxy-<version>-merged.bin # TTGO LoRa32
+esptool.py --chip esp32s3 write_flash 0x0 xiao_s3_wio_proxy-<version>-merged.bin # XIAO ESP32S3 & Wio-SX1262
 ```
 
 Replace `<version>` with the downloaded release version.
